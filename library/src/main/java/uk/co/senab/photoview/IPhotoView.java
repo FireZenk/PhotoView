@@ -361,4 +361,11 @@ public interface IPhotoView {
      * @param onSingleFlingListener OnSingleFlingListener instance
      */
     void setOnSingleFlingListener(PhotoViewAttacher.OnSingleFlingListener onSingleFlingListener);
+
+    /**
+     +     * Will callback about View's TranslationY values changes.
+     +     *
+     +     * @param onDismissConditionListener OnDismissConditionListener instance
+     +     */
+    void setOnDismissConditionListener(PhotoViewAttacher.OnDismissConditionListener onDismissConditionListener);
 }

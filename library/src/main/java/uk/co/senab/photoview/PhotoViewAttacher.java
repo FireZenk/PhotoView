@@ -15,13 +15,17 @@
  *******************************************************************************/
 package uk.co.senab.photoview;
 
+import android.animation.ObjectAnimator;
 import android.annotation.SuppressLint;
+import android.annotation.TargetApi;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
 import android.graphics.Matrix.ScaleToFit;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.support.v4.view.MotionEventCompat;
 import android.util.Log;
 import android.view.GestureDetector;
@@ -72,6 +76,7 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
 
     private boolean mAllowParentInterceptOnEdge = true;
     private boolean mBlockParentIntercept = false;
+    private OnDismissConditionListener mDismissConditionListener;
 
     private static void checkZoomLevels(float minZoom, float midZoom,
                                         float maxZoom) {
@@ -212,6 +217,11 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
 
         // Finally, update the UI so that we're zoomable
         setZoomable(zoomable);
+    }
+
+    @Override
+    public void setOnDismissConditionListener(OnDismissConditionListener onDismissConditionListener) {
+        this.mDismissConditionListener = onDismissConditionListener;
     }
 
     @Override
@@ -500,6 +510,10 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
         }
     }
 
+    private boolean tracking = false;
+    private float startY;
+
+    @TargetApi(Build.VERSION_CODES.HONEYCOMB)
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouch(View v, MotionEvent ev) {
@@ -515,6 +529,15 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
                         parent.requestDisallowInterceptTouchEvent(true);
                     } else {
                         LogManager.getLogger().i(LOG_TAG, "onTouch getParent() returned null");
+                    }
+
+                    if (mDismissConditionListener != null) {
+                        Rect hitRect = new Rect();
+                        v.getHitRect(hitRect);
+                        if (hitRect.contains((int) ev.getX(), (int) ev.getY())) {
+                            tracking = true;
+                        }
+                        startY = ev.getY();
                     }
 
                     // If we're flinging, and the user presses down, cancel
@@ -534,7 +557,19 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
                             handled = true;
                         }
                     }
+
+                    if (mDismissConditionListener != null) {
+                        tracking = false;
+                        animateSwipeView(v, v.getHeight());
+                    }
                     break;
+                case MotionEvent.ACTION_MOVE:
+                    if (mDismissConditionListener != null) {
+                        if (tracking) {
+                            v.setTranslationY(ev.getY() - startY);
+                        }
+                    }
+                    return true;
             }
 
             // Try the Scale/Drag detector
@@ -558,6 +593,27 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
         }
 
         return handled;
+    }
+
+    @TargetApi(Build.VERSION_CODES.HONEYCOMB)
+    private void animateSwipeView(View swipeView, int parentHeight) {
+        int quarterHeight = parentHeight / 4;
+        float currentPosition = swipeView.getTranslationY();
+        float animateTo = 0.0f;
+
+        if (currentPosition < -quarterHeight) {
+            animateTo = -parentHeight;
+        } else if (currentPosition > quarterHeight) {
+            animateTo = parentHeight;
+        }
+
+        ObjectAnimator.ofFloat(swipeView, "translationY", currentPosition, animateTo)
+               .setDuration(200)
+               .start();
+
+        if (mDismissConditionListener != null) {
+          mDismissConditionListener.onDismiss(currentPosition);
+        }
     }
 
     @Override
@@ -981,6 +1037,22 @@ public class PhotoViewAttacher implements IPhotoView, View.OnTouchListener,
         if (null == imageView)
             return 0;
         return imageView.getHeight() - imageView.getPaddingTop() - imageView.getPaddingBottom();
+    }
+
+    /**
+     * Interface definition for a callback to be invoked when the ImageView is swiped Up or Down.
+     * (It support API 15 or above)
+     *
+     * @author WindSekirun
+     */
+    public static interface OnDismissConditionListener {
+        /**
+         * A callback to receive where the user swipe up or down on a ImageView. You will receive a callback
+         * if the user swipe up or down anywhere on the view, swiping on 'whitespace' will not be ignored.
+         *
+         * @param currentPosition - Swiped View's Calculated TranslationY Value.
+         */
+        void onDismiss(float currentPosition);
     }
 
     /**
